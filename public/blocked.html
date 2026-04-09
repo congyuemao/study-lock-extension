@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Study Lock</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #111;
+            color: #fff;
+        }
+
+        .card {
+            width: min(560px, 90vw);
+            background: #1b1b1b;
+            border: 1px solid #333;
+            border-radius: 16px;
+            padding: 24px;
+            box-sizing: border-box;
+        }
+
+        h1 {
+            margin-top: 0;
+            font-size: 28px;
+        }
+
+        p {
+            line-height: 1.6;
+            color: #ddd;
+        }
+
+        .meta {
+            margin-top: 16px;
+            padding: 12px;
+            background: #262626;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Study Lock</h1>
+        <p>This website is not on the allowlist during the current study session.</p>
+        <div class="meta" id="meta">Loading current study topic...</div>
+    </div>
+
+    <script>
+        chrome.storage.local.get(['session']).then((result) => {
+            const meta = document.getElementById('meta')
+            const session = result.session
+            if (!meta) return
+
+            if (session && session.active) {
+                meta.textContent = `Current topic: ${session.topic || 'Not set'}`
+            } else {
+                meta.textContent = 'No active session.'
+            }
+        })
+    </script>
+</body>
+</html>
