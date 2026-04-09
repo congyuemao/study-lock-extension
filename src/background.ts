@@ -1,19 +1,7 @@
-type SessionData = {
-    active: boolean
-    topic: string
-    endTime: number | null
-}
+import { BLOCK_RULE_ID } from './shared/constants'
+import { getAllowlistDomains, type SessionData } from './shared/storage'
 
-const BLOCK_RULE_ID = 2
-
-const ALLOWLIST_DOMAINS = [
-    'chatgpt.com',
-    'canvas.lms.unimelb.edu.au',
-    'edstem.org',
-    'github.com'
-]
-
-function buildBlockRule(): chrome.declarativeNetRequest.Rule {
+function buildBlockRule(domains: string[]): chrome.declarativeNetRequest.Rule {
     return {
         id: BLOCK_RULE_ID,
         priority: 1,
@@ -25,20 +13,21 @@ function buildBlockRule(): chrome.declarativeNetRequest.Rule {
         },
         condition: {
             resourceTypes: ['main_frame'],
-            excludedRequestDomains: ALLOWLIST_DOMAINS
+            excludedRequestDomains: domains
         }
     }
 }
 
 async function applyStudyRules(): Promise<void> {
     try {
+        const domains = await getAllowlistDomains()
+
         await chrome.declarativeNetRequest.updateDynamicRules({
             removeRuleIds: [BLOCK_RULE_ID],
-            addRules: [buildBlockRule()]
+            addRules: [buildBlockRule(domains)]
         })
 
-        const rules = await chrome.declarativeNetRequest.getDynamicRules()
-        console.log('Study Lock rules applied:', rules)
+        console.log('Study Lock rules applied with allowlist:', domains)
     } catch (error) {
         console.error('Failed to apply Study Lock rules:', error)
     }
@@ -50,8 +39,7 @@ async function clearStudyRules(): Promise<void> {
             removeRuleIds: [BLOCK_RULE_ID]
         })
 
-        const rules = await chrome.declarativeNetRequest.getDynamicRules()
-        console.log('Study Lock rules cleared:', rules)
+        console.log('Study Lock rules cleared')
     } catch (error) {
         console.error('Failed to clear Study Lock rules:', error)
     }
@@ -78,13 +66,8 @@ chrome.runtime.onStartup.addListener(() => {
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'local') return
-    if (!changes.session) return
 
-    const newSession = changes.session.newValue as SessionData | undefined
-
-    if (newSession?.active) {
-        void applyStudyRules()
-    } else {
-        void clearStudyRules()
+    if (changes.session || changes.allowlistDomains) {
+        void syncRulesFromSession()
     }
 })

@@ -4,10 +4,79 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Study Lock Options</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 24px;
+            background: #111;
+            color: #fff;
+        }
+
+        h1 {
+            margin-top: 0;
+        }
+
+        p {
+            color: #ccc;
+            line-height: 1.6;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 220px;
+            box-sizing: border-box;
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid #333;
+            background: #1b1b1b;
+            color: #fff;
+            resize: vertical;
+            font-family: Consolas, monospace;
+            font-size: 14px;
+        }
+
+        .actions {
+            margin-top: 16px;
+            display: flex;
+            gap: 12px;
+        }
+
+        button {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+
+        #saveBtn {
+            background: #7c3aed;
+            color: #fff;
+        }
+
+        #resetBtn {
+            background: #333;
+            color: #fff;
+        }
+
+        #status {
+            margin-top: 16px;
+            color: #9ae6b4;
+        }
+    </style>
 </head>
 <body>
-    <h1>Options</h1>
-    <p>Settings page coming soon.</p>
+    <h1>Study Lock Options</h1>
+    <p>Enter one allowlisted domain per line.</p>
+    <p>Examples: chatgpt.com, github.com, edstem.org</p>
+
+    <textarea id="allowlist"></textarea>
+
+    <div class="actions">
+        <button id="saveBtn">Save allowlist</button>
+        <button id="resetBtn">Reset to default</button>
+    </div>
+
+    <p id="status"></p>
 
     <script type="module" src="./options.ts"></script>
 </body>

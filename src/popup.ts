@@ -3,6 +3,11 @@ const minutesInput = document.getElementById('minutes') as HTMLInputElement
 const startBtn = document.getElementById('startBtn') as HTMLButtonElement
 const endBtn = document.getElementById('endBtn') as HTMLButtonElement
 const statusText = document.getElementById('status') as HTMLParagraphElement
+const optionsBtn = document.getElementById('optionsBtn') as HTMLButtonElement
+
+optionsBtn.addEventListener('click', async () => {
+    await chrome.runtime.openOptionsPage()
+})
 
 type SessionData = {
     active: boolean
