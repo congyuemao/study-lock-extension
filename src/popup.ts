@@ -8,6 +8,7 @@ import {
 
 const topicInput = document.getElementById('topic') as HTMLInputElement
 const minutesInput = document.getElementById('minutes') as HTMLInputElement
+const burnModeInput = document.getElementById('burnMode') as HTMLInputElement
 const startBtn = document.getElementById('startBtn') as HTMLButtonElement
 const endBtn = document.getElementById('endBtn') as HTMLButtonElement
 const optionsBtn = document.getElementById('optionsBtn') as HTMLButtonElement
@@ -34,15 +35,22 @@ async function loadSession(): Promise<void> {
 
     if (!session) {
         optionsBtn.disabled = false
+        endBtn.disabled = false
+        burnModeInput.disabled = false
         statusText.textContent = 'No active session.'
         sessionInfo.textContent = 'No active session.'
         return
     }
 
     topicInput.value = session.topic
+    burnModeInput.checked = Boolean(session.burnMode)
+    burnModeInput.disabled = true
     optionsBtn.disabled = true
-    statusText.textContent = `Topic: ${session.topic}. ${formatRemainingTime(session.endTime)}`
-    sessionInfo.textContent = `Topic: ${session.topic} | ${formatRemainingTime(session.endTime)}`
+    endBtn.disabled = Boolean(session.burnMode)
+
+    const modeText = session.burnMode ? ' | Burn mode' : ''
+    statusText.textContent = `Topic: ${session.topic}. ${formatRemainingTime(session.endTime)}${modeText}`
+    sessionInfo.textContent = `Topic: ${session.topic} | ${formatRemainingTime(session.endTime)}${modeText}`
 }
 
 async function loadAllowlist(): Promise<void> {
@@ -77,7 +85,8 @@ startBtn.addEventListener('click', async () => {
     const session: SessionData = {
         active: true,
         topic,
-        endTime
+        endTime,
+        burnMode: burnModeInput.checked
     }
 
     await saveSession(session)
@@ -85,7 +94,12 @@ startBtn.addEventListener('click', async () => {
 })
 
 endBtn.addEventListener('click', async () => {
-    await endSession()
+    const ended = await endSession()
+    if (!ended) {
+        statusText.textContent = 'Burn mode active: manual stop is disabled.'
+        return
+    }
+
     await loadSession()
 })
 

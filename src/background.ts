@@ -8,6 +8,7 @@ import {
 } from './shared/storage'
 
 const END_ALARM_NAME = 'study-lock-end'
+let isRestoringProtectedSession = false
 
 function buildBlockRule(domains: string[]): chrome.declarativeNetRequest.Rule {
     return {
@@ -68,7 +69,7 @@ async function syncRulesFromSession(): Promise<void> {
     const session = await getStoredSession()
 
     if (session?.active && isSessionExpired(session)) {
-        await endSession()
+        await endSession({ force: true })
         await clearStudyRules()
         await chrome.alarms.clear(END_ALARM_NAME)
         return
@@ -83,6 +84,44 @@ async function syncRulesFromSession(): Promise<void> {
     }
 }
 
+function isProtectedBurnSession(session: SessionData | null): boolean {
+    if (!session?.active) return false
+    if (!session.burnMode) return false
+    return !isSessionExpired(session)
+}
+
+async function restoreProtectedSessionIfNeeded(
+    oldSession: SessionData | null,
+    newSession: SessionData | null
+): Promise<void> {
+    if (isRestoringProtectedSession) return
+    if (!isProtectedBurnSession(oldSession)) return
+    if (newSession?.active) return
+
+    isRestoringProtectedSession = true
+
+    try {
+        await chrome.storage.local.set({ session: oldSession })
+        await applyStudyRules()
+        await scheduleEndAlarm(oldSession)
+        console.warn('Protected burn-mode session was restored after premature stop attempt.')
+    } finally {
+        isRestoringProtectedSession = false
+    }
+}
+
+async function reopenWindowIfAllClosed(): Promise<void> {
+    const session = await getStoredSession()
+    if (!isProtectedBurnSession(session)) return
+
+    const windows = await chrome.windows.getAll()
+    if (windows.length > 0) return
+
+    await chrome.windows.create({
+        url: 'https://chatgpt.com/'
+    })
+}
+
 chrome.runtime.onInstalled.addListener(() => {
     void syncRulesFromSession()
 })
@@ -94,6 +133,13 @@ chrome.runtime.onStartup.addListener(() => {
 chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'local') return
 
+    if (changes.session) {
+        const oldSession = (changes.session.oldValue as SessionData | undefined) ?? null
+        const newSession = (changes.session.newValue as SessionData | undefined) ?? null
+
+        void restoreProtectedSessionIfNeeded(oldSession, newSession)
+    }
+
     if (changes.session || changes.allowlistDomains) {
         void syncRulesFromSession()
     }
@@ -103,11 +149,15 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name !== END_ALARM_NAME) return
 
     void (async () => {
-        await endSession()
+        await endSession({ force: true })
         await clearStudyRules()
         await chrome.alarms.clear(END_ALARM_NAME)
         console.log('Study Lock session ended automatically by alarm')
     })()
+})
+
+chrome.windows.onRemoved.addListener(() => {
+    void reopenWindowIfAllClosed()
 })
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

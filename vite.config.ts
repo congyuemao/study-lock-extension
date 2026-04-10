@@ -10,6 +10,7 @@ export default defineConfig({
                 popup: resolve(__dirname, 'src/popup.html'),
                 options: resolve(__dirname, 'src/options.html'),
                 background: resolve(__dirname, 'src/background.ts'),
+                'close-guard': resolve(__dirname, 'src/content/close-guard.ts'),
                 chatgpt: resolve(__dirname, 'src/content/chatgpt.ts')
             },
             output: {

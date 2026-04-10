@@ -31,6 +31,25 @@
             margin-bottom: 16px;
         }
 
+        .mode-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .mode-row input[type="checkbox"] {
+            width: auto;
+            margin: 0;
+        }
+
+        .mode-tip {
+            margin: 0 0 16px 0;
+            color: #666;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
         .actions {
             display: flex;
             gap: 8px;
@@ -83,6 +102,12 @@
 
     <label for="minutes">Minutes</label>
     <input id="minutes" type="number" value="60" min="1" />
+
+    <div class="mode-row">
+        <input id="burnMode" type="checkbox" />
+        <label for="burnMode">Burn mode</label>
+    </div>
+    <p class="mode-tip">When enabled: manual stop is disabled during session, and page close/leave is blocked as much as browser APIs allow.</p>
 
     <div class="actions">
         <button id="startBtn">Start session</button>

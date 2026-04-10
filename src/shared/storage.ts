@@ -4,6 +4,7 @@ export type SessionData = {
     active: boolean
     topic: string
     endTime: number | null
+    burnMode?: boolean
 }
 
 function normalizeDomain(input: string): string | null {
@@ -46,22 +47,40 @@ export async function saveAllowlistDomains(inputs: string[]): Promise<string[]> 
 }
 
 export async function saveSession(session: SessionData): Promise<void> {
-    await chrome.storage.local.set({ session })
-}
-
-export async function endSession(): Promise<void> {
     await chrome.storage.local.set({
         session: {
-            active: false,
-            topic: '',
-            endTime: null
+            ...session,
+            burnMode: Boolean(session.burnMode)
         } satisfies SessionData
     })
 }
 
+export async function endSession(options?: { force?: boolean }): Promise<boolean> {
+    const existing = await getStoredSession()
+    const isProtected = Boolean(existing?.active && existing.burnMode && !options?.force)
+    if (isProtected) return false
+
+    await chrome.storage.local.set({
+        session: {
+            active: false,
+            topic: '',
+            endTime: null,
+            burnMode: false
+        } satisfies SessionData
+    })
+
+    return true
+}
+
 export async function getStoredSession(): Promise<SessionData | null> {
     const result = await chrome.storage.local.get(['session'])
-    return (result.session as SessionData | undefined) ?? null
+    const session = (result.session as SessionData | undefined) ?? null
+
+    if (!session) return null
+    return {
+        ...session,
+        burnMode: Boolean(session.burnMode)
+    }
 }
 
 export function isSessionExpired(session: SessionData | null): boolean {
@@ -76,7 +95,7 @@ export async function getEffectiveSession(): Promise<SessionData | null> {
     if (!session || !session.active) return null
 
     if (isSessionExpired(session)) {
-        await endSession()
+        await endSession({ force: true })
         return null
     }
 

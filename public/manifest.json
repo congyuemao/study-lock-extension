@@ -14,7 +14,8 @@
     "permissions": [
         "storage",
         "declarativeNetRequest",
-        "alarms"
+        "alarms",
+        "windows"
     ],
     "host_permissions": [
         "<all_urls>",
@@ -22,6 +23,13 @@
         "https://*.chatgpt.com/*"
     ],
     "content_scripts": [
+        {
+            "matches": [
+                "<all_urls>"
+            ],
+            "js": [ "assets/close-guard.js" ],
+            "run_at": "document_start"
+        },
         {
             "matches": [
                 "https://chatgpt.com/*",

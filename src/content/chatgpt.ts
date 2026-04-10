@@ -6,6 +6,7 @@ type SessionData = {
     active: boolean
     topic: string
     endTime: number | null
+    burnMode?: boolean
 }
 
 type ChatEditor = HTMLDivElement | HTMLTextAreaElement
@@ -18,7 +19,8 @@ async function endSession(): Promise<void> {
         [SESSION_STORAGE_KEY]: {
             active: false,
             topic: '',
-            endTime: null
+            endTime: null,
+            burnMode: false
         } satisfies SessionData
     })
 }
@@ -97,7 +99,8 @@ function updateBanner(): void {
     }
 
     const banner = getOrCreateBanner()
-    banner.textContent = `Study Lock active | Topic: ${currentSession.topic} | ${formatRemainingTime(currentSession.endTime)}`
+    const modeText = currentSession.burnMode ? ' | Burn mode' : ''
+    banner.textContent = `Study Lock active | Topic: ${currentSession.topic} | ${formatRemainingTime(currentSession.endTime)}${modeText}`
 }
 
 function buildWrappedPrompt(userInput: string, topic: string): string {
