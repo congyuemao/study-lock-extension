@@ -109,3 +109,14 @@ chrome.alarms.onAlarm.addListener((alarm) => {
         console.log('Study Lock session ended automatically by alarm')
     })()
 })
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (!message || message.type !== 'sync-session-state') return
+
+    void (async () => {
+        await syncRulesFromSession()
+        sendResponse({ ok: true })
+    })()
+
+    return true
+})

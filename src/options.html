@@ -48,6 +48,12 @@
             cursor: pointer;
         }
 
+        button:disabled,
+        textarea:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
         #saveBtn {
             background: #7c3aed;
             color: #fff;
@@ -68,6 +74,7 @@
     <h1>Study Lock Options</h1>
     <p>Enter one allowlisted domain per line.</p>
     <p>Examples: chatgpt.com, github.com, edstem.org</p>
+    <p id="lockNotice"></p>
 
     <textarea id="allowlist"></textarea>
 

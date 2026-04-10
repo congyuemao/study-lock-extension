@@ -33,12 +33,14 @@ async function loadSession(): Promise<void> {
     const session = await getEffectiveSession()
 
     if (!session) {
+        optionsBtn.disabled = false
         statusText.textContent = 'No active session.'
         sessionInfo.textContent = 'No active session.'
         return
     }
 
     topicInput.value = session.topic
+    optionsBtn.disabled = true
     statusText.textContent = `Topic: ${session.topic}. ${formatRemainingTime(session.endTime)}`
     sessionInfo.textContent = `Topic: ${session.topic} | ${formatRemainingTime(session.endTime)}`
 }
@@ -88,6 +90,11 @@ endBtn.addEventListener('click', async () => {
 })
 
 optionsBtn.addEventListener('click', async () => {
+    if (optionsBtn.disabled) {
+        statusText.textContent = 'Options are locked during an active session.'
+        return
+    }
+
     await chrome.runtime.openOptionsPage()
 })
 

@@ -1,12 +1,48 @@
-import {
-    endSession,
-    getEffectiveSession,
-    type SessionData
-} from '../shared/storage'
-
 const WRAP_MARKER = '[STUDY_LOCK_WRAPPED]'
+const SESSION_STORAGE_KEY = 'session'
+
+type SessionData = {
+    active: boolean
+    topic: string
+    endTime: number | null
+}
+
+type ChatEditor = HTMLDivElement | HTMLTextAreaElement
 
 let currentSession: SessionData | null = null
+
+async function endSession(): Promise<void> {
+    await chrome.storage.local.set({
+        [SESSION_STORAGE_KEY]: {
+            active: false,
+            topic: '',
+            endTime: null
+        } satisfies SessionData
+    })
+}
+
+async function getStoredSession(): Promise<SessionData | null> {
+    const result = await chrome.storage.local.get([SESSION_STORAGE_KEY])
+    return (result[SESSION_STORAGE_KEY] as SessionData | undefined) ?? null
+}
+
+function isSessionExpired(session: SessionData | null): boolean {
+    if (!session || !session.active) return false
+    if (!session.endTime) return false
+    return Date.now() >= session.endTime
+}
+
+async function getEffectiveSession(): Promise<SessionData | null> {
+    const session = await getStoredSession()
+    if (!session || !session.active) return null
+
+    if (isSessionExpired(session)) {
+        await endSession()
+        return null
+    }
+
+    return session
+}
 
 function formatRemainingTime(endTime: number | null): string {
     if (!endTime) return 'No active session'
@@ -28,19 +64,26 @@ function getOrCreateBanner(): HTMLDivElement {
     const banner = document.createElement('div')
     banner.id = 'study-lock-banner'
     banner.style.position = 'fixed'
-    banner.style.top = '0'
-    banner.style.left = '0'
-    banner.style.right = '0'
-    banner.style.zIndex = '999999'
-    banner.style.padding = '10px 16px'
+    banner.style.top = '12px'
+    banner.style.left = '50%'
+    banner.style.transform = 'translateX(-50%)'
+    banner.style.zIndex = '2147483647'
+    banner.style.padding = '10px 14px'
+    banner.style.maxWidth = 'calc(100vw - 24px)'
+    banner.style.borderRadius = '12px'
+    banner.style.border = '1px solid rgba(255, 255, 255, 0.25)'
     banner.style.background = '#111'
     banner.style.color = '#fff'
     banner.style.fontSize = '14px'
     banner.style.fontFamily = 'Arial, sans-serif'
     banner.style.textAlign = 'center'
-    banner.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.2)'
+    banner.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.35)'
+    banner.style.pointerEvents = 'none'
+    banner.style.whiteSpace = 'nowrap'
+    banner.style.overflow = 'hidden'
+    banner.style.textOverflow = 'ellipsis'
 
-    document.body.appendChild(banner)
+    ;(document.body ?? document.documentElement).appendChild(banner)
     return banner
 }
 
@@ -73,12 +116,28 @@ User's actual request:
 ${userInput}`
 }
 
-function getChatEditor(): HTMLDivElement | null {
-    return document.querySelector('#prompt-textarea[contenteditable="true"]')
+function getChatEditor(): ChatEditor | null {
+    const selectors = [
+        '#prompt-textarea[contenteditable="true"]',
+        'div#prompt-textarea',
+        'textarea#prompt-textarea',
+        'textarea[name="prompt-textarea"]'
+    ]
+
+    for (const selector of selectors) {
+        const el = document.querySelector(selector)
+        if (el instanceof HTMLDivElement || el instanceof HTMLTextAreaElement) {
+            return el
+        }
+    }
+
+    return null
 }
 
-function getEditorPlainText(editor: HTMLDivElement): string {
-    return editor.innerText.trim()
+function getEditorPlainText(editor: ChatEditor): string {
+    return editor instanceof HTMLTextAreaElement
+        ? editor.value.trim()
+        : editor.innerText.trim()
 }
 
 function setNativeTextareaValue(textarea: HTMLTextAreaElement, value: string): void {
@@ -98,7 +157,7 @@ function syncFallbackTextarea(value: string): void {
     setNativeTextareaValue(textarea, value)
 }
 
-function setEditorText(editor: HTMLDivElement, value: string): void {
+function setDivEditorText(editor: HTMLDivElement, value: string): void {
     editor.focus()
     editor.innerHTML = ''
 
@@ -114,14 +173,27 @@ function setEditorText(editor: HTMLDivElement, value: string): void {
         editor.appendChild(p)
     }
 
-    editor.dispatchEvent(
-        new InputEvent('input', {
-            bubbles: true,
-            cancelable: true,
-            inputType: 'insertText',
-            data: value
-        })
-    )
+    if (typeof InputEvent === 'function') {
+        editor.dispatchEvent(
+            new InputEvent('input', {
+                bubbles: true,
+                cancelable: true,
+                inputType: 'insertText',
+                data: value
+            })
+        )
+    } else {
+        editor.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+}
+
+function setEditorText(editor: ChatEditor, value: string): void {
+    if (editor instanceof HTMLTextAreaElement) {
+        setNativeTextareaValue(editor, value)
+        return
+    }
+
+    setDivEditorText(editor, value)
 
     syncFallbackTextarea(value)
 }
@@ -172,7 +244,11 @@ function setupSessionListener(): void {
 
 function isEditorTarget(target: EventTarget | null): boolean {
     if (!(target instanceof HTMLElement)) return false
-    return !!target.closest('#prompt-textarea')
+    return !!target.closest('#prompt-textarea, textarea[name="prompt-textarea"]')
+}
+
+function isChatForm(form: HTMLFormElement): boolean {
+    return Boolean(form.querySelector('#prompt-textarea, textarea[name="prompt-textarea"]'))
 }
 
 function setupSendInterception(): void {
@@ -194,7 +270,23 @@ function setupSendInterception(): void {
         (event) => {
             const form = event.target
             if (!(form instanceof HTMLFormElement)) return
-            if (!form.querySelector('#prompt-textarea')) return
+            if (!isChatForm(form)) return
+
+            wrapInputIfNeeded()
+        },
+        true
+    )
+
+    document.addEventListener(
+        'click',
+        (event) => {
+            const target = event.target
+            if (!(target instanceof HTMLElement)) return
+
+            const sendButton = target.closest(
+                'button[data-testid="send-button"], button[aria-label*="Send"], button[aria-label*="send"]'
+            )
+            if (!sendButton) return
 
             wrapInputIfNeeded()
         },
