@@ -1,8 +1,8 @@
-type SessionData = {
-    active: boolean
-    topic: string
-    endTime: number | null
-}
+import {
+    endSession,
+    getEffectiveSession,
+    type SessionData
+} from '../shared/storage'
 
 const WRAP_MARKER = '[STUDY_LOCK_WRAPPED]'
 
@@ -141,15 +141,15 @@ function wrapInputIfNeeded(): void {
 }
 
 async function loadSession(): Promise<void> {
-    const result = await chrome.storage.local.get(['session'])
-    currentSession = (result.session as SessionData | undefined) ?? null
+    currentSession = await getEffectiveSession()
     updateBanner()
 }
 
 function startBannerLoop(): void {
-    loadSession()
+    void loadSession()
+
     setInterval(() => {
-        updateBanner()
+        void loadSession()
     }, 1000)
 }
 
@@ -158,7 +158,14 @@ function setupSessionListener(): void {
         if (areaName !== 'local') return
         if (!changes.session) return
 
-        currentSession = changes.session.newValue as SessionData | null
+        const newSession = changes.session.newValue as SessionData | null
+
+        if (newSession && newSession.active && newSession.endTime && Date.now() >= newSession.endTime) {
+            void endSession()
+            return
+        }
+
+        currentSession = newSession
         updateBanner()
     })
 }

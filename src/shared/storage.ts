@@ -44,3 +44,41 @@ export async function saveAllowlistDomains(inputs: string[]): Promise<string[]> 
     await chrome.storage.local.set({ allowlistDomains: domains })
     return domains
 }
+
+export async function saveSession(session: SessionData): Promise<void> {
+    await chrome.storage.local.set({ session })
+}
+
+export async function endSession(): Promise<void> {
+    await chrome.storage.local.set({
+        session: {
+            active: false,
+            topic: '',
+            endTime: null
+        } satisfies SessionData
+    })
+}
+
+export async function getStoredSession(): Promise<SessionData | null> {
+    const result = await chrome.storage.local.get(['session'])
+    return (result.session as SessionData | undefined) ?? null
+}
+
+export function isSessionExpired(session: SessionData | null): boolean {
+    if (!session || !session.active) return false
+    if (!session.endTime) return false
+    return Date.now() >= session.endTime
+}
+
+export async function getEffectiveSession(): Promise<SessionData | null> {
+    const session = await getStoredSession()
+
+    if (!session || !session.active) return null
+
+    if (isSessionExpired(session)) {
+        await endSession()
+        return null
+    }
+
+    return session
+}

@@ -1,5 +1,13 @@
 import { BLOCK_RULE_ID } from './shared/constants'
-import { getAllowlistDomains, type SessionData } from './shared/storage'
+import {
+    endSession,
+    getAllowlistDomains,
+    getStoredSession,
+    isSessionExpired,
+    type SessionData
+} from './shared/storage'
+
+const END_ALARM_NAME = 'study-lock-end'
 
 function buildBlockRule(domains: string[]): chrome.declarativeNetRequest.Rule {
     return {
@@ -45,14 +53,33 @@ async function clearStudyRules(): Promise<void> {
     }
 }
 
+async function scheduleEndAlarm(session: SessionData | null): Promise<void> {
+    await chrome.alarms.clear(END_ALARM_NAME)
+
+    if (!session?.active || !session.endTime) return
+    if (Date.now() >= session.endTime) return
+
+    chrome.alarms.create(END_ALARM_NAME, {
+        when: session.endTime
+    })
+}
+
 async function syncRulesFromSession(): Promise<void> {
-    const result = await chrome.storage.local.get(['session'])
-    const session = result.session as SessionData | undefined
+    const session = await getStoredSession()
+
+    if (session?.active && isSessionExpired(session)) {
+        await endSession()
+        await clearStudyRules()
+        await chrome.alarms.clear(END_ALARM_NAME)
+        return
+    }
 
     if (session?.active) {
         await applyStudyRules()
+        await scheduleEndAlarm(session)
     } else {
         await clearStudyRules()
+        await chrome.alarms.clear(END_ALARM_NAME)
     }
 }
 
@@ -70,4 +97,15 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     if (changes.session || changes.allowlistDomains) {
         void syncRulesFromSession()
     }
+})
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name !== END_ALARM_NAME) return
+
+    void (async () => {
+        await endSession()
+        await clearStudyRules()
+        await chrome.alarms.clear(END_ALARM_NAME)
+        console.log('Study Lock session ended automatically by alarm')
+    })()
 })
