@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Study Lock</title>
     <style>
+        /* Compact popup layout for extension action panel. */
         body {
             font-family: Arial, sans-serif;
             width: 320px;
@@ -31,6 +32,7 @@
             margin-bottom: 16px;
         }
 
+        /* Burn mode toggle row. */
         .mode-row {
             display: flex;
             align-items: center;
@@ -74,10 +76,10 @@
             margin-top: 12px;
         }
 
-            .panel h2 {
-                margin: 0 0 10px 0;
-                font-size: 16px;
-            }
+        .panel h2 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+        }
 
         .muted {
             color: #666;
@@ -97,18 +99,21 @@
 <body>
     <h1>Study Lock</h1>
 
+    <!-- Session input controls -->
     <label for="topic">Study topic</label>
     <input id="topic" type="text" placeholder="e.g. COMP20007 topological sort" />
 
     <label for="minutes">Minutes</label>
     <input id="minutes" type="number" value="60" min="1" />
 
+    <!-- Optional strict mode toggle -->
     <div class="mode-row">
         <input id="burnMode" type="checkbox" />
         <label for="burnMode">Burn mode</label>
     </div>
     <p class="mode-tip">When enabled: manual stop is disabled during session, and page close/leave is blocked as much as browser APIs allow.</p>
 
+    <!-- Main actions -->
     <div class="actions">
         <button id="startBtn">Start session</button>
         <button id="endBtn">End session</button>
@@ -117,11 +122,13 @@
 
     <p id="status">No active session.</p>
 
+    <!-- Session summary -->
     <div class="panel">
         <h2>Current session</h2>
         <p id="sessionInfo" class="muted">No active session.</p>
     </div>
 
+    <!-- Allowlist preview -->
     <div class="panel">
         <h2>Allowlist domains</h2>
         <p id="allowlistCount" class="muted">Loading...</p>

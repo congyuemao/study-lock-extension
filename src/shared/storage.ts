@@ -1,5 +1,8 @@
 import { DEFAULT_ALLOWLIST_DOMAINS } from './constants'
 
+/**
+ * Shared shape for the active study session state saved in chrome.storage.
+ */
 export type SessionData = {
     active: boolean
     topic: string
@@ -7,6 +10,13 @@ export type SessionData = {
     burnMode?: boolean
 }
 
+/**
+ * Normalizes one user-entered domain into a canonical host string.
+ *
+ * Examples:
+ * - https://www.github.com/path -> github.com
+ * - *.chatgpt.com -> chatgpt.com
+ */
 function normalizeDomain(input: string): string | null {
     let value = input.trim().toLowerCase()
     if (!value) return null
@@ -20,6 +30,9 @@ function normalizeDomain(input: string): string | null {
     return value
 }
 
+/**
+ * Normalizes and deduplicates a domain list while preserving first-seen order.
+ */
 export function normalizeDomainList(inputs: string[]): string[] {
     const set = new Set<string>()
 
@@ -31,6 +44,9 @@ export function normalizeDomainList(inputs: string[]): string[] {
     return [...set]
 }
 
+/**
+ * Reads the allowlist from storage, falling back to defaults on first run.
+ */
 export async function getAllowlistDomains(): Promise<string[]> {
     const result = await chrome.storage.local.get(['allowlistDomains'])
     const stored = Array.isArray(result.allowlistDomains)
@@ -40,12 +56,18 @@ export async function getAllowlistDomains(): Promise<string[]> {
     return normalizeDomainList(stored)
 }
 
+/**
+ * Saves a normalized allowlist and returns the stored canonical values.
+ */
 export async function saveAllowlistDomains(inputs: string[]): Promise<string[]> {
     const domains = normalizeDomainList(inputs)
     await chrome.storage.local.set({ allowlistDomains: domains })
     return domains
 }
 
+/**
+ * Persists session data and coerces burnMode into a strict boolean.
+ */
 export async function saveSession(session: SessionData): Promise<void> {
     await chrome.storage.local.set({
         session: {
@@ -55,6 +77,11 @@ export async function saveSession(session: SessionData): Promise<void> {
     })
 }
 
+/**
+ * Ends the active session.
+ *
+ * Returns false when burn mode blocks manual stop (unless force=true).
+ */
 export async function endSession(options?: { force?: boolean }): Promise<boolean> {
     const existing = await getStoredSession()
     const isProtected = Boolean(existing?.active && existing.burnMode && !options?.force)
@@ -72,6 +99,9 @@ export async function endSession(options?: { force?: boolean }): Promise<boolean
     return true
 }
 
+/**
+ * Reads raw session from storage and normalizes optional fields.
+ */
 export async function getStoredSession(): Promise<SessionData | null> {
     const result = await chrome.storage.local.get(['session'])
     const session = (result.session as SessionData | undefined) ?? null
@@ -83,12 +113,18 @@ export async function getStoredSession(): Promise<SessionData | null> {
     }
 }
 
+/**
+ * Checks if the current timestamp has passed session endTime.
+ */
 export function isSessionExpired(session: SessionData | null): boolean {
     if (!session || !session.active) return false
     if (!session.endTime) return false
     return Date.now() >= session.endTime
 }
 
+/**
+ * Returns a valid active session, auto-ending expired sessions on read.
+ */
 export async function getEffectiveSession(): Promise<SessionData | null> {
     const session = await getStoredSession()
 

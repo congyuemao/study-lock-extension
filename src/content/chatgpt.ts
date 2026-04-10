@@ -1,5 +1,16 @@
+/**
+ * Marker inserted at the top of wrapped prompts so we can detect and avoid double-wrap.
+ */
 const WRAP_MARKER = '[STUDY_LOCK_WRAPPED]'
+
+/**
+ * Storage key used by all extension surfaces for session state.
+ */
 const SESSION_STORAGE_KEY = 'session'
+
+/**
+ * Delimiter used to recover the original user request from wrapped text.
+ */
 const USER_REQUEST_LABEL = "User's actual request:"
 
 type SessionData = {
@@ -12,8 +23,15 @@ type SessionData = {
 type ChatEditor = HTMLDivElement | HTMLTextAreaElement
 
 let currentSession: SessionData | null = null
+
+/**
+ * Prevents replayed synthetic clicks from recursively triggering the same interception flow.
+ */
 let isReplayingSendClick = false
 
+/**
+ * Local emergency end used by this content script when it detects an expired session.
+ */
 async function endSession(): Promise<void> {
     await chrome.storage.local.set({
         [SESSION_STORAGE_KEY]: {
@@ -25,17 +43,26 @@ async function endSession(): Promise<void> {
     })
 }
 
+/**
+ * Reads raw session data from extension storage.
+ */
 async function getStoredSession(): Promise<SessionData | null> {
     const result = await chrome.storage.local.get([SESSION_STORAGE_KEY])
     return (result[SESSION_STORAGE_KEY] as SessionData | undefined) ?? null
 }
 
+/**
+ * Checks whether a session is active but already past endTime.
+ */
 function isSessionExpired(session: SessionData | null): boolean {
     if (!session || !session.active) return false
     if (!session.endTime) return false
     return Date.now() >= session.endTime
 }
 
+/**
+ * Returns active session only when still valid, otherwise auto-cleans expired session.
+ */
 async function getEffectiveSession(): Promise<SessionData | null> {
     const session = await getStoredSession()
     if (!session || !session.active) return null
@@ -48,6 +75,9 @@ async function getEffectiveSession(): Promise<SessionData | null> {
     return session
 }
 
+/**
+ * Converts endTime into a compact countdown string used in top banner.
+ */
 function formatRemainingTime(endTime: number | null): string {
     if (!endTime) return 'No active session'
 
@@ -61,6 +91,9 @@ function formatRemainingTime(endTime: number | null): string {
     return `${minutes}m ${seconds}s remaining`
 }
 
+/**
+ * Creates or reuses the fixed top banner displayed on ChatGPT pages.
+ */
 function getOrCreateBanner(): HTMLDivElement {
     const existing = document.getElementById('study-lock-banner') as HTMLDivElement | null
     if (existing) return existing
@@ -91,6 +124,9 @@ function getOrCreateBanner(): HTMLDivElement {
     return banner
 }
 
+/**
+ * Shows/hides banner based on active session.
+ */
 function updateBanner(): void {
     const oldBanner = document.getElementById('study-lock-banner')
     if (!currentSession || !currentSession.active) {
@@ -103,6 +139,9 @@ function updateBanner(): void {
     banner.textContent = `Study Lock active | Topic: ${currentSession.topic} | ${formatRemainingTime(currentSession.endTime)}${modeText}`
 }
 
+/**
+ * Builds the policy-wrapped prompt that is sent to ChatGPT.
+ */
 function buildWrappedPrompt(userInput: string, topic: string): string {
     return `${WRAP_MARKER}
 
@@ -121,6 +160,9 @@ ${USER_REQUEST_LABEL}
 ${userInput}`
 }
 
+/**
+ * Extracts original user request from wrapped text block.
+ */
 function extractRawRequestFromWrappedText(text: string): string | null {
     if (!text.startsWith(WRAP_MARKER)) return null
 
@@ -131,6 +173,9 @@ function extractRawRequestFromWrappedText(text: string): string | null {
     return text.slice(start).replace(/^\s+/, '')
 }
 
+/**
+ * Locates the active ChatGPT editor using several selectors to survive UI changes.
+ */
 function getChatEditor(): ChatEditor | null {
     const selectors = [
         '#prompt-textarea[contenteditable="true"]',
@@ -149,12 +194,18 @@ function getChatEditor(): ChatEditor | null {
     return null
 }
 
+/**
+ * Reads plain text from either contenteditable div or textarea editor.
+ */
 function getEditorPlainText(editor: ChatEditor): string {
     return editor instanceof HTMLTextAreaElement
         ? editor.value.trim()
         : editor.innerText.trim()
 }
 
+/**
+ * Updates textarea value through the native setter so React-like frameworks detect changes.
+ */
 function setNativeTextareaValue(textarea: HTMLTextAreaElement, value: string): void {
     const prototype = Object.getPrototypeOf(textarea)
     const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value')
@@ -163,6 +214,9 @@ function setNativeTextareaValue(textarea: HTMLTextAreaElement, value: string): v
     textarea.dispatchEvent(new Event('change', { bubbles: true }))
 }
 
+/**
+ * Syncs fallback hidden textarea used by some ChatGPT builds.
+ */
 function syncFallbackTextarea(value: string): void {
     const textarea = document.querySelector(
         'textarea[name="prompt-textarea"]'
@@ -172,6 +226,9 @@ function syncFallbackTextarea(value: string): void {
     setNativeTextareaValue(textarea, value)
 }
 
+/**
+ * Writes text into contenteditable editor preserving line breaks.
+ */
 function setDivEditorText(editor: HTMLDivElement, value: string): void {
     editor.focus()
     editor.innerHTML = ''
@@ -202,6 +259,9 @@ function setDivEditorText(editor: HTMLDivElement, value: string): void {
     }
 }
 
+/**
+ * Unified writer for both editor modes.
+ */
 function setEditorText(editor: ChatEditor, value: string): void {
     if (editor instanceof HTMLTextAreaElement) {
         setNativeTextareaValue(editor, value)
@@ -209,10 +269,12 @@ function setEditorText(editor: ChatEditor, value: string): void {
     }
 
     setDivEditorText(editor, value)
-
     syncFallbackTextarea(value)
 }
 
+/**
+ * Wraps current editor content once and returns original text for restoration.
+ */
 function wrapInputIfNeeded(editor: ChatEditor | null = getChatEditor()): string | null {
     if (!currentSession || !currentSession.active) return null
     if (!editor) return null
@@ -226,6 +288,9 @@ function wrapInputIfNeeded(editor: ChatEditor | null = getChatEditor()): string 
     return rawText
 }
 
+/**
+ * Restores visible editor text only if wrapped text is still present.
+ */
 function maybeRestoreRawTextInEditor(rawText: string): void {
     const editor = getChatEditor()
     if (!editor) return
@@ -236,6 +301,9 @@ function maybeRestoreRawTextInEditor(rawText: string): void {
     setEditorText(editor, rawText)
 }
 
+/**
+ * Multiple delayed restoration attempts to handle async UI updates.
+ */
 function scheduleRestoreRawText(rawText: string): void {
     for (const delay of [120, 220, 420, 720]) {
         window.setTimeout(() => {
@@ -244,6 +312,9 @@ function scheduleRestoreRawText(rawText: string): void {
     }
 }
 
+/**
+ * Immediate wrap plus short retry to catch race conditions before send.
+ */
 function wrapInputWithRetry(editor: ChatEditor | null = getChatEditor()): string | null {
     const rawText = wrapInputIfNeeded(editor)
     window.setTimeout(() => {
@@ -252,11 +323,17 @@ function wrapInputWithRetry(editor: ChatEditor | null = getChatEditor()): string
     return rawText
 }
 
+/**
+ * Pulls latest session and refreshes banner.
+ */
 async function loadSession(): Promise<void> {
     currentSession = await getEffectiveSession()
     updateBanner()
 }
 
+/**
+ * Keeps countdown accurate while tab remains open.
+ */
 function startBannerLoop(): void {
     void loadSession()
 
@@ -265,6 +342,9 @@ function startBannerLoop(): void {
     }, 1000)
 }
 
+/**
+ * Reacts to session changes and auto-cleans expired state from content side.
+ */
 function setupSessionListener(): void {
     chrome.storage.onChanged.addListener((changes, areaName) => {
         if (areaName !== 'local') return
@@ -282,15 +362,24 @@ function setupSessionListener(): void {
     })
 }
 
+/**
+ * True when keyboard event originated from the chat editor.
+ */
 function isEditorTarget(target: EventTarget | null): boolean {
     if (!(target instanceof Element)) return false
     return !!target.closest('#prompt-textarea, textarea[name="prompt-textarea"]')
 }
 
+/**
+ * True when submit event came from the ChatGPT compose form.
+ */
 function isChatForm(form: HTMLFormElement): boolean {
     return Boolean(form.querySelector('#prompt-textarea, textarea[name="prompt-textarea"]'))
 }
 
+/**
+ * Resolves the send button from direct target or composed event path.
+ */
 function getSendButtonFromEvent(event: Event): HTMLButtonElement | null {
     const selector =
         'button#composer-submit-button, button[data-testid="send-button"], button[aria-label*="Send"], button[aria-label*="send"]'
@@ -310,6 +399,12 @@ function getSendButtonFromEvent(event: Event): HTMLButtonElement | null {
     return null
 }
 
+/**
+ * Button-send path:
+ * 1) cancel original click,
+ * 2) wrap prompt,
+ * 3) replay one synthetic click.
+ */
 function handleSendButtonClick(event: MouseEvent): void {
     const sendButton = getSendButtonFromEvent(event)
     if (!sendButton) return
@@ -324,7 +419,6 @@ function handleSendButtonClick(event: MouseEvent): void {
     if (!rawText) return
     if (rawText.startsWith(WRAP_MARKER)) return
 
-    // First click: wrap prompt, cancel this send, and replay a send click.
     event.preventDefault()
     event.stopPropagation()
     event.stopImmediatePropagation()
@@ -342,6 +436,9 @@ function handleSendButtonClick(event: MouseEvent): void {
     }, 40)
 }
 
+/**
+ * Replaces wrapped text that may briefly appear in visible UI fragments.
+ */
 function sanitizeWrappedTextInElement(element: Element): void {
     if (element instanceof HTMLTextAreaElement) return
     if (element.id === 'prompt-textarea') return
@@ -367,6 +464,9 @@ function sanitizeWrappedTextInElement(element: Element): void {
     }
 }
 
+/**
+ * Watches DOM mutations and periodically scans chat area for wrapped-text artifacts.
+ */
 function setupWrappedTextSanitizer(): void {
     const observer = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
@@ -390,6 +490,9 @@ function setupWrappedTextSanitizer(): void {
     }, 1200)
 }
 
+/**
+ * Hooks Enter submit, form submit, and send-button clicks to enforce wrapping.
+ */
 function setupSendInterception(): void {
     document.addEventListener(
         'keydown',
@@ -432,6 +535,9 @@ function setupSendInterception(): void {
     )
 }
 
+/**
+ * Content-script bootstrap.
+ */
 function start(): void {
     startBannerLoop()
     setupSessionListener()

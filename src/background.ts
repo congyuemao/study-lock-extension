@@ -7,9 +7,19 @@ import {
     type SessionData
 } from './shared/storage'
 
+/**
+ * Alarm name used to auto-finish a running study session at its deadline.
+ */
 const END_ALARM_NAME = 'study-lock-end'
+
+/**
+ * Guard flag to avoid recursive session restoration while we patch storage state.
+ */
 let isRestoringProtectedSession = false
 
+/**
+ * Builds one DNR rule that blocks all main-frame navigation except allowlisted domains.
+ */
 function buildBlockRule(domains: string[]): chrome.declarativeNetRequest.Rule {
     return {
         id: BLOCK_RULE_ID,
@@ -27,6 +37,9 @@ function buildBlockRule(domains: string[]): chrome.declarativeNetRequest.Rule {
     }
 }
 
+/**
+ * Applies the current allowlist-based blocking rule.
+ */
 async function applyStudyRules(): Promise<void> {
     try {
         const domains = await getAllowlistDomains()
@@ -42,6 +55,9 @@ async function applyStudyRules(): Promise<void> {
     }
 }
 
+/**
+ * Removes the dynamic blocking rule and restores normal browsing.
+ */
 async function clearStudyRules(): Promise<void> {
     try {
         await chrome.declarativeNetRequest.updateDynamicRules({
@@ -54,6 +70,9 @@ async function clearStudyRules(): Promise<void> {
     }
 }
 
+/**
+ * Schedules (or clears) the auto-end alarm based on session state.
+ */
 async function scheduleEndAlarm(session: SessionData | null): Promise<void> {
     await chrome.alarms.clear(END_ALARM_NAME)
 
@@ -65,9 +84,13 @@ async function scheduleEndAlarm(session: SessionData | null): Promise<void> {
     })
 }
 
+/**
+ * Single synchronization point that aligns DNR rules + alarm with current session state.
+ */
 async function syncRulesFromSession(): Promise<void> {
     const session = await getStoredSession()
 
+    // If the session already expired, force-stop it and clean everything up.
     if (session?.active && isSessionExpired(session)) {
         await endSession({ force: true })
         await clearStudyRules()
@@ -84,12 +107,18 @@ async function syncRulesFromSession(): Promise<void> {
     }
 }
 
+/**
+ * Burn mode is considered protected only while it is active and unexpired.
+ */
 function isProtectedBurnSession(session: SessionData | null): boolean {
     if (!session?.active) return false
     if (!session.burnMode) return false
     return !isSessionExpired(session)
 }
 
+/**
+ * Restores a burn-mode session if something tried to clear it before timeout.
+ */
 async function restoreProtectedSessionIfNeeded(
     oldSession: SessionData | null,
     newSession: SessionData | null
@@ -110,6 +139,9 @@ async function restoreProtectedSessionIfNeeded(
     }
 }
 
+/**
+ * Attempts to reopen a browser window if all windows were closed during active burn mode.
+ */
 async function reopenWindowIfAllClosed(): Promise<void> {
     const session = await getStoredSession()
     if (!isProtectedBurnSession(session)) return
@@ -122,6 +154,7 @@ async function reopenWindowIfAllClosed(): Promise<void> {
     })
 }
 
+// Re-apply expected state whenever the extension is installed or browser starts.
 chrome.runtime.onInstalled.addListener(() => {
     void syncRulesFromSession()
 })
@@ -130,6 +163,7 @@ chrome.runtime.onStartup.addListener(() => {
     void syncRulesFromSession()
 })
 
+// React to storage changes from popup/options/content scripts.
 chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'local') return
 
@@ -145,6 +179,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     }
 })
 
+// Auto-end active session when deadline alarm fires.
 chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name !== END_ALARM_NAME) return
 
@@ -156,10 +191,12 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     })()
 })
 
+// If the user closes windows during burn mode, try to recover quickly.
 chrome.windows.onRemoved.addListener(() => {
     void reopenWindowIfAllClosed()
 })
 
+// Allows blocked pages/content scripts to request a background sync.
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!message || message.type !== 'sync-session-state') return
 

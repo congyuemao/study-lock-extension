@@ -1,5 +1,9 @@
+// Block page script-level guard that mirrors burn-mode close protection.
 let isBurnModeGuardActive = false
 
+/**
+ * Requests browser confirmation when user tries to leave while burn mode is active.
+ */
 function handleBeforeUnload(event) {
     if (!isBurnModeGuardActive) return
     event.preventDefault()
@@ -8,6 +12,9 @@ function handleBeforeUnload(event) {
 
 window.addEventListener('beforeunload', handleBeforeUnload, true)
 
+/**
+ * Reads session state and renders the status message shown on blocked page.
+ */
 async function syncAndRenderBlockedState() {
     const meta = document.getElementById('meta')
 
@@ -16,9 +23,12 @@ async function syncAndRenderBlockedState() {
     const result = await chrome.storage.local.get(['session'])
     const session = result.session
     const isExpired = Boolean(session?.active && session?.endTime && Date.now() >= session.endTime)
+
+    // Guard should stay active only for active, unexpired burn-mode sessions.
     isBurnModeGuardActive = Boolean(session?.active && session?.burnMode && !isExpired)
 
     if (isExpired) {
+        // Auto-clean stale session on blocked page as a fallback safety path.
         await chrome.storage.local.set({
             session: {
                 active: false,
@@ -39,6 +49,7 @@ async function syncAndRenderBlockedState() {
         return
     }
 
+    // Ensure background rules are aligned if user reached this page after session ended.
     await chrome.runtime.sendMessage({ type: 'sync-session-state' })
     meta.textContent = 'No active session. Refresh to continue browsing.'
 }

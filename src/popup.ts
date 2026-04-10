@@ -6,6 +6,7 @@ import {
     type SessionData
 } from './shared/storage'
 
+// Main popup controls.
 const topicInput = document.getElementById('topic') as HTMLInputElement
 const minutesInput = document.getElementById('minutes') as HTMLInputElement
 const burnModeInput = document.getElementById('burnMode') as HTMLInputElement
@@ -17,6 +18,9 @@ const sessionInfo = document.getElementById('sessionInfo') as HTMLParagraphEleme
 const allowlistCount = document.getElementById('allowlistCount') as HTMLParagraphElement
 const allowlistList = document.getElementById('allowlistList') as HTMLUListElement
 
+/**
+ * Converts session endTime into human-readable remaining time.
+ */
 function formatRemainingTime(endTime: number | null): string {
     if (!endTime) return 'No active session.'
 
@@ -30,6 +34,9 @@ function formatRemainingTime(endTime: number | null): string {
     return `${minutes}m ${seconds}s remaining.`
 }
 
+/**
+ * Reloads session state and reflects lock/availability rules in popup UI.
+ */
 async function loadSession(): Promise<void> {
     const session = await getEffectiveSession()
 
@@ -44,8 +51,14 @@ async function loadSession(): Promise<void> {
 
     topicInput.value = session.topic
     burnModeInput.checked = Boolean(session.burnMode)
+
+    // Burn mode can only be selected before a session starts.
     burnModeInput.disabled = true
+
+    // Options changes are blocked during active sessions.
     optionsBtn.disabled = true
+
+    // Manual stop is blocked in burn mode.
     endBtn.disabled = Boolean(session.burnMode)
 
     const modeText = session.burnMode ? ' | Burn mode' : ''
@@ -53,6 +66,9 @@ async function loadSession(): Promise<void> {
     sessionInfo.textContent = `Topic: ${session.topic} | ${formatRemainingTime(session.endTime)}${modeText}`
 }
 
+/**
+ * Renders current allowlist domains in popup summary panel.
+ */
 async function loadAllowlist(): Promise<void> {
     const domains = await getAllowlistDomains()
 
@@ -66,6 +82,7 @@ async function loadAllowlist(): Promise<void> {
     }
 }
 
+// Starts a new study session with current form values.
 startBtn.addEventListener('click', async () => {
     const topic = topicInput.value.trim()
     const minutes = Number(minutesInput.value)
@@ -93,6 +110,7 @@ startBtn.addEventListener('click', async () => {
     await loadSession()
 })
 
+// Attempts to stop the current session.
 endBtn.addEventListener('click', async () => {
     const ended = await endSession()
     if (!ended) {
@@ -103,6 +121,7 @@ endBtn.addEventListener('click', async () => {
     await loadSession()
 })
 
+// Opens options page unless active-session lock is in place.
 optionsBtn.addEventListener('click', async () => {
     if (optionsBtn.disabled) {
         statusText.textContent = 'Options are locked during an active session.'
@@ -112,9 +131,13 @@ optionsBtn.addEventListener('click', async () => {
     await chrome.runtime.openOptionsPage()
 })
 
+/**
+ * Initializes popup and keeps countdown text fresh.
+ */
 async function init(): Promise<void> {
     await loadSession()
     await loadAllowlist()
+
     setInterval(() => {
         void loadSession()
     }, 1000)
