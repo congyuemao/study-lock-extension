@@ -1,5 +1,6 @@
 const WRAP_MARKER = '[STUDY_LOCK_WRAPPED]'
 const SESSION_STORAGE_KEY = 'session'
+const USER_REQUEST_LABEL = "User's actual request:"
 
 type SessionData = {
     active: boolean
@@ -10,6 +11,7 @@ type SessionData = {
 type ChatEditor = HTMLDivElement | HTMLTextAreaElement
 
 let currentSession: SessionData | null = null
+let isReplayingSendClick = false
 
 async function endSession(): Promise<void> {
     await chrome.storage.local.set({
@@ -112,8 +114,18 @@ Rules:
 3. Prefer explanation, teaching, worked examples, and study guidance.
 4. Do not encourage off-topic conversation.
 
-User's actual request:
+${USER_REQUEST_LABEL}
 ${userInput}`
+}
+
+function extractRawRequestFromWrappedText(text: string): string | null {
+    if (!text.startsWith(WRAP_MARKER)) return null
+
+    const labelIndex = text.indexOf(USER_REQUEST_LABEL)
+    if (labelIndex < 0) return null
+
+    const start = labelIndex + USER_REQUEST_LABEL.length
+    return text.slice(start).replace(/^\s+/, '')
 }
 
 function getChatEditor(): ChatEditor | null {
@@ -198,18 +210,43 @@ function setEditorText(editor: ChatEditor, value: string): void {
     syncFallbackTextarea(value)
 }
 
-function wrapInputIfNeeded(): void {
-    if (!currentSession || !currentSession.active) return
-
-    const editor = getChatEditor()
-    if (!editor) return
+function wrapInputIfNeeded(editor: ChatEditor | null = getChatEditor()): string | null {
+    if (!currentSession || !currentSession.active) return null
+    if (!editor) return null
 
     const rawText = getEditorPlainText(editor)
-    if (!rawText) return
-    if (rawText.startsWith(WRAP_MARKER)) return
+    if (!rawText) return null
+    if (rawText.startsWith(WRAP_MARKER)) return null
 
     const wrapped = buildWrappedPrompt(rawText, currentSession.topic)
     setEditorText(editor, wrapped)
+    return rawText
+}
+
+function maybeRestoreRawTextInEditor(rawText: string): void {
+    const editor = getChatEditor()
+    if (!editor) return
+
+    const currentText = getEditorPlainText(editor)
+    if (!currentText.startsWith(WRAP_MARKER)) return
+
+    setEditorText(editor, rawText)
+}
+
+function scheduleRestoreRawText(rawText: string): void {
+    for (const delay of [120, 220, 420, 720]) {
+        window.setTimeout(() => {
+            maybeRestoreRawTextInEditor(rawText)
+        }, delay)
+    }
+}
+
+function wrapInputWithRetry(editor: ChatEditor | null = getChatEditor()): string | null {
+    const rawText = wrapInputIfNeeded(editor)
+    window.setTimeout(() => {
+        void wrapInputIfNeeded(editor)
+    }, 30)
+    return rawText
 }
 
 async function loadSession(): Promise<void> {
@@ -243,12 +280,111 @@ function setupSessionListener(): void {
 }
 
 function isEditorTarget(target: EventTarget | null): boolean {
-    if (!(target instanceof HTMLElement)) return false
+    if (!(target instanceof Element)) return false
     return !!target.closest('#prompt-textarea, textarea[name="prompt-textarea"]')
 }
 
 function isChatForm(form: HTMLFormElement): boolean {
     return Boolean(form.querySelector('#prompt-textarea, textarea[name="prompt-textarea"]'))
+}
+
+function getSendButtonFromEvent(event: Event): HTMLButtonElement | null {
+    const selector =
+        'button#composer-submit-button, button[data-testid="send-button"], button[aria-label*="Send"], button[aria-label*="send"]'
+
+    const target = event.target
+    if (target instanceof Element) {
+        const found = target.closest(selector)
+        if (found instanceof HTMLButtonElement) return found
+    }
+
+    for (const node of event.composedPath()) {
+        if (node instanceof HTMLButtonElement && node.matches(selector)) {
+            return node
+        }
+    }
+
+    return null
+}
+
+function handleSendButtonClick(event: MouseEvent): void {
+    const sendButton = getSendButtonFromEvent(event)
+    if (!sendButton) return
+
+    if (isReplayingSendClick) return
+    if (!currentSession?.active) return
+
+    const editor = getChatEditor()
+    if (!editor) return
+
+    const rawText = getEditorPlainText(editor)
+    if (!rawText) return
+    if (rawText.startsWith(WRAP_MARKER)) return
+
+    // First click: wrap prompt, cancel this send, and replay a send click.
+    event.preventDefault()
+    event.stopPropagation()
+    event.stopImmediatePropagation()
+
+    const wrappedRawText = wrapInputWithRetry(editor)
+    if (!wrappedRawText) return
+    scheduleRestoreRawText(wrappedRawText)
+
+    isReplayingSendClick = true
+    window.setTimeout(() => {
+        sendButton.click()
+        window.setTimeout(() => {
+            isReplayingSendClick = false
+        }, 0)
+    }, 40)
+}
+
+function sanitizeWrappedTextInElement(element: Element): void {
+    if (element instanceof HTMLTextAreaElement) return
+    if (element.id === 'prompt-textarea') return
+    if (element.closest('#prompt-textarea')) return
+
+    if (element.childElementCount === 0) {
+        const text = element.textContent ?? ''
+        const raw = extractRawRequestFromWrappedText(text.trim())
+        if (raw !== null) {
+            element.textContent = raw
+        }
+    }
+
+    for (const child of Array.from(element.querySelectorAll('*'))) {
+        if (!(child instanceof Element)) continue
+        if (child.childElementCount !== 0) continue
+
+        const text = child.textContent ?? ''
+        const raw = extractRawRequestFromWrappedText(text.trim())
+        if (raw !== null) {
+            child.textContent = raw
+        }
+    }
+}
+
+function setupWrappedTextSanitizer(): void {
+    const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            for (const addedNode of Array.from(mutation.addedNodes)) {
+                if (!(addedNode instanceof Element)) continue
+                sanitizeWrappedTextInElement(addedNode)
+            }
+        }
+    })
+
+    observer.observe(document.body ?? document.documentElement, {
+        childList: true,
+        subtree: true
+    })
+
+    window.setInterval(() => {
+        const candidates = document.querySelectorAll('main *')
+        for (const candidate of Array.from(candidates)) {
+            sanitizeWrappedTextInElement(candidate)
+        }
+    }, 1200)
 }
 
 function setupSendInterception(): void {
@@ -260,7 +396,10 @@ function setupSendInterception(): void {
             if (event.shiftKey) return
             if (event.isComposing) return
 
-            wrapInputIfNeeded()
+            const wrappedRawText = wrapInputIfNeeded()
+            if (wrappedRawText) {
+                scheduleRestoreRawText(wrappedRawText)
+            }
         },
         true
     )
@@ -272,7 +411,10 @@ function setupSendInterception(): void {
             if (!(form instanceof HTMLFormElement)) return
             if (!isChatForm(form)) return
 
-            wrapInputIfNeeded()
+            const wrappedRawText = wrapInputIfNeeded()
+            if (wrappedRawText) {
+                scheduleRestoreRawText(wrappedRawText)
+            }
         },
         true
     )
@@ -280,15 +422,8 @@ function setupSendInterception(): void {
     document.addEventListener(
         'click',
         (event) => {
-            const target = event.target
-            if (!(target instanceof HTMLElement)) return
-
-            const sendButton = target.closest(
-                'button[data-testid="send-button"], button[aria-label*="Send"], button[aria-label*="send"]'
-            )
-            if (!sendButton) return
-
-            wrapInputIfNeeded()
+            if (!(event instanceof MouseEvent)) return
+            handleSendButtonClick(event)
         },
         true
     )
@@ -298,6 +433,7 @@ function start(): void {
     startBannerLoop()
     setupSessionListener()
     setupSendInterception()
+    setupWrappedTextSanitizer()
 }
 
 if (document.readyState === 'loading') {
