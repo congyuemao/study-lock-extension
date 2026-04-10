@@ -1,0 +1,125 @@
+diff --git a/package.json b/package.json
+index 3595418..246f8b2 100644
+--- a/package.json
++++ b/package.json
+@@ -1,12 +1,10 @@
+ {
+   "name": "study-lock-extension",
+   "private": true,
+-  "version": "0.0.0",
++  "version": "0.1.0",
+   "type": "module",
+   "scripts": {
+-    "dev": "vite",
+-    "build": "tsc && vite build",
+-    "preview": "vite preview"
++    "build": "tsc && vite build"
+   },
+   "devDependencies": {
+     "@types/chrome": "^0.1.40",
+diff --git a/public/blocked.js b/public/blocked.js
+index 43371a5..f31c55f 100644
+--- a/public/blocked.js
++++ b/public/blocked.js
+@@ -1,12 +1,33 @@
+-chrome.storage.local.get(['session']).then((result) => {
++async function syncAndRenderBlockedState() {
+     const meta = document.getElementById('meta')
++    if (!meta) return
++
++    const result = await chrome.storage.local.get(['session'])
+     const session = result.session
+ 
+-    if (!meta) return
++    const isExpired = Boolean(session?.active && session?.endTime && Date.now() >= session.endTime)
++
++    if (isExpired) {
++        await chrome.storage.local.set({
++            session: {
++                active: false,
++                topic: '',
++                endTime: null
++            }
++        })
++
++        await chrome.runtime.sendMessage({ type: 'sync-session-state' })
++        meta.textContent = 'Session expired. You can now refresh and continue browsing.'
++        return
++    }
+ 
+     if (session && session.active) {
+         meta.textContent = `Current topic: ${session.topic || 'Not set'}`
+-    } else {
+-        meta.textContent = 'No active session.'
++        return
+     }
+-})
++
++    await chrome.runtime.sendMessage({ type: 'sync-session-state' })
++    meta.textContent = 'No active session. Refresh to continue browsing.'
++}
++
++void syncAndRenderBlockedState()
+diff --git a/src/background.ts b/src/background.ts
+index dd39bb0..d2ccb69 100644
+--- a/src/background.ts
++++ b/src/background.ts
+@@ -90,3 +90,13 @@ chrome.alarms.onAlarm.addListener((alarm) => {
+         console.log('Study Lock session ended automatically by alarm')
+     })()
+ })
++
++chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
++    if (!message || message.type !== 'sync-session-state') return
++
++    void (async () => {
++        await syncRulesFromSession()
++        sendResponse({ ok: true })
++    })()
++    return true
++})
+diff --git a/src/popup.html b/src/popup.html
+index 08f82a8..ec4e7bb 100644
+--- a/src/popup.html
++++ b/src/popup.html
+@@ -40,6 +40,14 @@
+             cursor: pointer;
+         }
+ 
++        button:disabled {
++            cursor: not-allowed;
++            opacity: 0.6;
++            background: #e0e0e0;
++            color: #777;
++            border: 1px solid #c7c7c7;
++        }
++
+         .panel {
+             border: 1px solid #ccc;
+             border-radius: 10px;
+diff --git a/src/popup.ts b/src/popup.ts
+index 9980fdf..9bca393 100644
+--- a/src/popup.ts
++++ b/src/popup.ts
+@@ -32,12 +32,14 @@ async function loadSession(): Promise<void> {
+     const session = await getEffectiveSession()
+ 
+     if (!session) {
++        optionsBtn.disabled = false
+         statusText.textContent = 'No active session.'
+         sessionInfo.textContent = 'No active session.'
+         return
+     }
+ 
+     topicInput.value = session.topic
++    optionsBtn.disabled = true
+     statusText.textContent = `Topic: ${session.topic}. ${formatRemainingTime(session.endTime)}`
+     sessionInfo.textContent = `Topic: ${session.topic} | ${formatRemainingTime(session.endTime)}`
+ }
+@@ -88,6 +90,7 @@ endBtn.addEventListener('click', async () => {
+ })
+ 
+ optionsBtn.addEventListener('click', async () => {
++    if (optionsBtn.disabled) return
+     await chrome.runtime.openOptionsPage()
+ })
