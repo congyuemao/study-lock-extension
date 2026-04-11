@@ -19,7 +19,6 @@ export default defineConfig({
                 background: resolve(__dirname, 'src/background.ts'),
                 'close-guard': resolve(__dirname, 'src/content/close-guard.ts'),
                 'focus-popup': resolve(__dirname, 'src/content/focus-popup.ts'),
-                'chatgpt-bar': resolve(__dirname, 'src/content/chatgpt-bar.ts'),
                 chatgpt: resolve(__dirname, 'src/content/chatgpt.ts')
             },
             output: {
