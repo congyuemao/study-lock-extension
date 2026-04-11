@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Study Lock Daily Calendar</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 24px;
+            background: #111;
+            color: #fff;
+        }
+
+        h1 {
+            margin-top: 0;
+        }
+
+        h2 {
+            margin: 0 0 12px 0;
+            font-size: 20px;
+        }
+
+        p {
+            color: #ccc;
+            line-height: 1.6;
+            margin: 8px 0;
+        }
+
+        .panel {
+            margin-top: 20px;
+            border: 1px solid #333;
+            border-radius: 14px;
+            padding: 16px;
+            background: #171717;
+        }
+
+        .actions {
+            margin-top: 16px;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            background: #333;
+            color: #fff;
+        }
+
+        #exportArchiveBtn {
+            background: #7c3aed;
+        }
+
+        .toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        .month-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #monthLabel {
+            margin: 0;
+            min-width: 180px;
+            text-align: center;
+            color: #fff;
+            font-weight: 700;
+        }
+
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #ddd;
+        }
+
+        .weekday-grid,
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .weekday {
+            text-align: center;
+            font-size: 15px;
+            font-weight: 600;
+            color: #9ca3af;
+        }
+
+        .calendar-cell {
+            min-height: 80px;
+            border: 1px solid #343434;
+            border-radius: 10px;
+            padding: 8px;
+            background: #1f1f1f;
+        }
+
+        .calendar-cell.empty {
+            background: #151515;
+            border-style: dashed;
+            opacity: 0.5;
+        }
+
+        .calendar-day-btn {
+            width: 100%;
+            height: 100%;
+            border: none;
+            border-radius: 8px;
+            text-align: left;
+            background: transparent;
+            color: #fff;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            cursor: pointer;
+        }
+
+        .calendar-day-btn .day-number {
+            font-size: 30px;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        .calendar-day-btn .day-total {
+            font-size: 18px;
+            font-weight: 700;
+            color: #a7f3d0;
+        }
+
+        .calendar-day-btn.has-record {
+            background: rgba(124, 58, 237, 0.2);
+            padding: 6px;
+        }
+
+        .calendar-day-btn.selected {
+            outline: 2px solid #7c3aed;
+        }
+
+        #selectedDateLabel {
+            margin: 0 0 8px 0;
+            color: #fff;
+        }
+
+        #selectedDayTotal {
+            margin: 0 0 12px 0;
+            color: #a7f3d0;
+            font-weight: 700;
+        }
+
+        #taskList {
+            margin: 0;
+            padding-left: 18px;
+            color: #ddd;
+        }
+
+        #taskList li {
+            margin-bottom: 8px;
+            line-height: 1.5;
+        }
+
+        #archiveStatus {
+            margin-top: 10px;
+            color: #93c5fd;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>Daily Focus Calendar</h1>
+    <p>Review your historical focus records, then export/import archive data.</p>
+
+    <div id="burnModeLockPanel" class="panel hidden">
+        <h2>Calendar Locked</h2>
+        <p>Burn mode is active right now, so daily calendar is temporarily unavailable to prevent distraction.</p>
+        <p>Come back after the current burn-mode session ends.</p>
+    </div>
+
+    <div id="calendarContent">
+    <div class="panel">
+        <h2>Calendar</h2>
+
+        <div class="toolbar">
+            <div class="month-controls">
+                <button id="prevMonthBtn" type="button">Previous</button>
+                <p id="monthLabel">-</p>
+                <button id="nextMonthBtn" type="button">Next</button>
+            </div>
+            <label class="toggle-row">
+                <input id="nightOwlMode" type="checkbox" />
+                Night Owl Mode (00:00-06:00 -> previous day)
+            </label>
+        </div>
+
+        <div class="weekday-grid">
+            <div class="weekday">Sun</div>
+            <div class="weekday">Mon</div>
+            <div class="weekday">Tue</div>
+            <div class="weekday">Wed</div>
+            <div class="weekday">Thu</div>
+            <div class="weekday">Fri</div>
+            <div class="weekday">Sat</div>
+        </div>
+
+        <div id="calendarGrid" class="calendar-grid"></div>
+    </div>
+
+    <div class="panel">
+        <h2 id="selectedDateLabel">Selected Day</h2>
+        <p id="selectedDayTotal">No focus records.</p>
+        <ul id="taskList"></ul>
+    </div>
+
+    <div class="panel">
+        <h2>Archive</h2>
+        <div class="actions">
+            <button id="exportArchiveBtn" type="button">Export archive</button>
+            <button id="importArchiveBtn" type="button">Import archive</button>
+        </div>
+        <input id="importArchiveInput" type="file" accept="application/json,.json" hidden />
+        <p id="archiveStatus"></p>
+    </div>
+    </div>
+
+    <script type="module" src="./calendar.ts"></script>
+</body>
+</html>

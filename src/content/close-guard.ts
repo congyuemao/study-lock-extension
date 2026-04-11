@@ -1,4 +1,4 @@
-type SessionData = {
+﻿type SessionData = {
     active: boolean
     topic: string
     endTime: number | null
@@ -70,3 +70,4 @@ void refreshGuardState()
 window.setInterval(() => {
     void refreshGuardState()
 }, 2000)
+

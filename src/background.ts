@@ -1,4 +1,5 @@
-import { BLOCK_RULE_ID } from './shared/constants'
+﻿import { BLOCK_RULE_ID } from './shared/constants'
+import { appendSessionRecord } from './shared/focus-archive'
 import {
     endSession,
     getAllowlistDomains,
@@ -117,6 +118,33 @@ function isProtectedBurnSession(session: SessionData | null): boolean {
 }
 
 /**
+ * Writes one finished session into daily archive when a valid active->inactive transition happens.
+ */
+async function recordCompletedSessionIfNeeded(
+    oldSession: SessionData | null,
+    newSession: SessionData | null
+): Promise<void> {
+    if (!oldSession?.active) return
+    if (newSession?.active) return
+    if (typeof oldSession.startTime !== 'number') return
+
+    // If burn mode session was stopped before timeout, it is considered invalid and will be restored.
+    if (oldSession.burnMode && !isSessionExpired(oldSession)) {
+        return
+    }
+
+    await appendSessionRecord(
+        {
+            topic: oldSession.topic || 'Focus Session',
+            startTime: oldSession.startTime,
+            endTime: oldSession.endTime,
+            burnMode: oldSession.burnMode
+        },
+        Date.now()
+    )
+}
+
+/**
  * Restores a burn-mode session if something tried to clear it before timeout.
  */
 async function restoreProtectedSessionIfNeeded(
@@ -171,6 +199,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
         const oldSession = (changes.session.oldValue as SessionData | undefined) ?? null
         const newSession = (changes.session.newValue as SessionData | undefined) ?? null
 
+        void recordCompletedSessionIfNeeded(oldSession, newSession)
         void restoreProtectedSessionIfNeeded(oldSession, newSession)
     }
 
@@ -207,3 +236,4 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
     return true
 })
+

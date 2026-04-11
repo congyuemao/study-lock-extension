@@ -1,4 +1,4 @@
-import { DEFAULT_ALLOWLIST_DOMAINS } from './constants'
+﻿import { DEFAULT_ALLOWLIST_DOMAINS } from './constants'
 
 /**
  * Shared shape for the active study session state saved in chrome.storage.
@@ -7,6 +7,7 @@ export type SessionData = {
     active: boolean
     topic: string
     endTime: number | null
+    startTime?: number | null
     burnMode?: boolean
 }
 
@@ -72,6 +73,7 @@ export async function saveSession(session: SessionData): Promise<void> {
     await chrome.storage.local.set({
         session: {
             ...session,
+            startTime: typeof session.startTime === 'number' ? session.startTime : null,
             burnMode: Boolean(session.burnMode)
         } satisfies SessionData
     })
@@ -92,6 +94,7 @@ export async function endSession(options?: { force?: boolean }): Promise<boolean
             active: false,
             topic: '',
             endTime: null,
+            startTime: null,
             burnMode: false
         } satisfies SessionData
     })
@@ -109,6 +112,7 @@ export async function getStoredSession(): Promise<SessionData | null> {
     if (!session) return null
     return {
         ...session,
+        startTime: typeof session.startTime === 'number' ? session.startTime : null,
         burnMode: Boolean(session.burnMode)
     }
 }
@@ -137,3 +141,4 @@ export async function getEffectiveSession(): Promise<SessionData | null> {
 
     return session
 }
+

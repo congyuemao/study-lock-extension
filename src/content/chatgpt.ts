@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Marker inserted at the top of wrapped prompts so we can detect and avoid double-wrap.
  */
 const WRAP_MARKER = '[STUDY_LOCK_WRAPPED]'
@@ -17,6 +17,7 @@ type SessionData = {
     active: boolean
     topic: string
     endTime: number | null
+    startTime?: number | null
     burnMode?: boolean
 }
 
@@ -38,6 +39,7 @@ async function endSession(): Promise<void> {
             active: false,
             topic: '',
             endTime: null,
+            startTime: null,
             burnMode: false
         } satisfies SessionData
     })
@@ -550,3 +552,4 @@ if (document.readyState === 'loading') {
 } else {
     start()
 }
+

@@ -1,4 +1,4 @@
-// Block page script-level guard that mirrors burn-mode close protection.
+﻿// Block page script-level guard that mirrors burn-mode close protection.
 let isBurnModeGuardActive = false
 
 /**
@@ -34,6 +34,7 @@ async function syncAndRenderBlockedState() {
                 active: false,
                 topic: '',
                 endTime: null,
+                startTime: null,
                 burnMode: false
             }
         })
@@ -55,3 +56,4 @@ async function syncAndRenderBlockedState() {
 }
 
 void syncAndRenderBlockedState()
+

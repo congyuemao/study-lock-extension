@@ -1,4 +1,4 @@
-import {
+﻿import {
     endSession,
     getAllowlistDomains,
     getEffectiveSession,
@@ -12,6 +12,7 @@ const minutesInput = document.getElementById('minutes') as HTMLInputElement
 const burnModeInput = document.getElementById('burnMode') as HTMLInputElement
 const startBtn = document.getElementById('startBtn') as HTMLButtonElement
 const endBtn = document.getElementById('endBtn') as HTMLButtonElement
+const calendarBtn = document.getElementById('calendarBtn') as HTMLButtonElement
 const optionsBtn = document.getElementById('optionsBtn') as HTMLButtonElement
 const statusText = document.getElementById('status') as HTMLParagraphElement
 const sessionInfo = document.getElementById('sessionInfo') as HTMLParagraphElement
@@ -42,6 +43,7 @@ async function loadSession(): Promise<void> {
 
     if (!session) {
         optionsBtn.disabled = false
+        calendarBtn.disabled = false
         endBtn.disabled = false
         burnModeInput.disabled = false
         statusText.textContent = 'No active session.'
@@ -57,6 +59,9 @@ async function loadSession(): Promise<void> {
 
     // Options changes are blocked during active sessions.
     optionsBtn.disabled = true
+
+    // Burn mode blocks opening calendar to reduce distraction.
+    calendarBtn.disabled = Boolean(session.burnMode)
 
     // Manual stop is blocked in burn mode.
     endBtn.disabled = Boolean(session.burnMode)
@@ -98,10 +103,12 @@ startBtn.addEventListener('click', async () => {
     }
 
     const endTime = Date.now() + minutes * 60 * 1000
+    const startTime = Date.now()
 
     const session: SessionData = {
         active: true,
         topic,
+        startTime,
         endTime,
         burnMode: burnModeInput.checked
     }
@@ -131,6 +138,17 @@ optionsBtn.addEventListener('click', async () => {
     await chrome.runtime.openOptionsPage()
 })
 
+// Opens dedicated calendar page to keep focus analytics decoupled from options.
+calendarBtn.addEventListener('click', async () => {
+    if (calendarBtn.disabled) {
+        statusText.textContent = 'Burn mode active: daily calendar is locked.'
+        return
+    }
+
+    const url = chrome.runtime.getURL('src/calendar.html')
+    window.open(url, '_blank', 'noopener,noreferrer')
+})
+
 /**
  * Initializes popup and keeps countdown text fresh.
  */
@@ -144,3 +162,4 @@ async function init(): Promise<void> {
 }
 
 void init()
+

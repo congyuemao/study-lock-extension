@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+﻿import { defineConfig } from 'vite'
 import { resolve } from 'node:path'
 
 /**
@@ -15,6 +15,7 @@ export default defineConfig({
             input: {
                 popup: resolve(__dirname, 'src/popup.html'),
                 options: resolve(__dirname, 'src/options.html'),
+                calendar: resolve(__dirname, 'src/calendar.html'),
                 background: resolve(__dirname, 'src/background.ts'),
                 'close-guard': resolve(__dirname, 'src/content/close-guard.ts'),
                 chatgpt: resolve(__dirname, 'src/content/chatgpt.ts')
@@ -27,3 +28,4 @@ export default defineConfig({
         }
     }
 })
+
