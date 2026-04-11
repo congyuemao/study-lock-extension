@@ -32,6 +32,13 @@
         },
         {
             "matches": [
+                "<all_urls>"
+            ],
+            "js": [ "assets/focus-popup.js" ],
+            "run_at": "document_idle"
+        },
+        {
+            "matches": [
                 "https://chatgpt.com/*",
                 "https://*.chatgpt.com/*"
             ],

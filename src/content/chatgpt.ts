@@ -1,17 +1,7 @@
-﻿/**
- * Marker inserted at the top of wrapped prompts so we can detect and avoid double-wrap.
- */
+(() => {
 const WRAP_MARKER = '[STUDY_LOCK_WRAPPED]'
-
-/**
- * Storage key used by all extension surfaces for session state.
- */
-const SESSION_STORAGE_KEY = 'session'
-
-/**
- * Delimiter used to recover the original user request from wrapped text.
- */
 const USER_REQUEST_LABEL = "User's actual request:"
+const SESSION_STORAGE_KEY = 'session'
 
 type SessionData = {
     active: boolean
@@ -24,16 +14,34 @@ type SessionData = {
 type ChatEditor = HTMLDivElement | HTMLTextAreaElement
 
 let currentSession: SessionData | null = null
-
-/**
- * Prevents replayed synthetic clicks from recursively triggering the same interception flow.
- */
 let isReplayingSendClick = false
 
-/**
- * Local emergency end used by this content script when it detects an expired session.
- */
-async function endSession(): Promise<void> {
+function normalizeSession(raw: unknown): SessionData | null {
+    if (!raw || typeof raw !== 'object') return null
+    const source = raw as Record<string, unknown>
+    if (!source.active) return null
+
+    return {
+        active: Boolean(source.active),
+        topic: typeof source.topic === 'string' ? source.topic : '',
+        endTime: typeof source.endTime === 'number' ? source.endTime : null,
+        startTime: typeof source.startTime === 'number' ? source.startTime : null,
+        burnMode: Boolean(source.burnMode)
+    }
+}
+
+async function getStoredSession(): Promise<SessionData | null> {
+    const result = await chrome.storage.local.get([SESSION_STORAGE_KEY])
+    return normalizeSession(result[SESSION_STORAGE_KEY])
+}
+
+function isSessionExpired(session: SessionData | null): boolean {
+    if (!session || !session.active) return false
+    if (!session.endTime) return false
+    return Date.now() >= session.endTime
+}
+
+async function forceEndSession(): Promise<void> {
     await chrome.storage.local.set({
         [SESSION_STORAGE_KEY]: {
             active: false,
@@ -41,109 +49,22 @@ async function endSession(): Promise<void> {
             endTime: null,
             startTime: null,
             burnMode: false
-        } satisfies SessionData
+        }
     })
 }
 
-/**
- * Reads raw session data from extension storage.
- */
-async function getStoredSession(): Promise<SessionData | null> {
-    const result = await chrome.storage.local.get([SESSION_STORAGE_KEY])
-    return (result[SESSION_STORAGE_KEY] as SessionData | undefined) ?? null
-}
-
-/**
- * Checks whether a session is active but already past endTime.
- */
-function isSessionExpired(session: SessionData | null): boolean {
-    if (!session || !session.active) return false
-    if (!session.endTime) return false
-    return Date.now() >= session.endTime
-}
-
-/**
- * Returns active session only when still valid, otherwise auto-cleans expired session.
- */
 async function getEffectiveSession(): Promise<SessionData | null> {
     const session = await getStoredSession()
-    if (!session || !session.active) return null
+    if (!session) return null
 
     if (isSessionExpired(session)) {
-        await endSession()
+        await forceEndSession()
         return null
     }
 
     return session
 }
 
-/**
- * Converts endTime into a compact countdown string used in top banner.
- */
-function formatRemainingTime(endTime: number | null): string {
-    if (!endTime) return 'No active session'
-
-    const diff = endTime - Date.now()
-    if (diff <= 0) return 'Session ended'
-
-    const totalSeconds = Math.floor(diff / 1000)
-    const minutes = Math.floor(totalSeconds / 60)
-    const seconds = totalSeconds % 60
-
-    return `${minutes}m ${seconds}s remaining`
-}
-
-/**
- * Creates or reuses the fixed top banner displayed on ChatGPT pages.
- */
-function getOrCreateBanner(): HTMLDivElement {
-    const existing = document.getElementById('study-lock-banner') as HTMLDivElement | null
-    if (existing) return existing
-
-    const banner = document.createElement('div')
-    banner.id = 'study-lock-banner'
-    banner.style.position = 'fixed'
-    banner.style.top = '12px'
-    banner.style.left = '50%'
-    banner.style.transform = 'translateX(-50%)'
-    banner.style.zIndex = '2147483647'
-    banner.style.padding = '10px 14px'
-    banner.style.maxWidth = 'calc(100vw - 24px)'
-    banner.style.borderRadius = '12px'
-    banner.style.border = '1px solid rgba(255, 255, 255, 0.25)'
-    banner.style.background = '#111'
-    banner.style.color = '#fff'
-    banner.style.fontSize = '14px'
-    banner.style.fontFamily = 'Arial, sans-serif'
-    banner.style.textAlign = 'center'
-    banner.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.35)'
-    banner.style.pointerEvents = 'none'
-    banner.style.whiteSpace = 'nowrap'
-    banner.style.overflow = 'hidden'
-    banner.style.textOverflow = 'ellipsis'
-
-    ;(document.body ?? document.documentElement).appendChild(banner)
-    return banner
-}
-
-/**
- * Shows/hides banner based on active session.
- */
-function updateBanner(): void {
-    const oldBanner = document.getElementById('study-lock-banner')
-    if (!currentSession || !currentSession.active) {
-        oldBanner?.remove()
-        return
-    }
-
-    const banner = getOrCreateBanner()
-    const modeText = currentSession.burnMode ? ' | Burn mode' : ''
-    banner.textContent = `Study Lock active | Topic: ${currentSession.topic} | ${formatRemainingTime(currentSession.endTime)}${modeText}`
-}
-
-/**
- * Builds the policy-wrapped prompt that is sent to ChatGPT.
- */
 function buildWrappedPrompt(userInput: string, topic: string): string {
     return `${WRAP_MARKER}
 
@@ -162,9 +83,6 @@ ${USER_REQUEST_LABEL}
 ${userInput}`
 }
 
-/**
- * Extracts original user request from wrapped text block.
- */
 function extractRawRequestFromWrappedText(text: string): string | null {
     if (!text.startsWith(WRAP_MARKER)) return null
 
@@ -175,9 +93,6 @@ function extractRawRequestFromWrappedText(text: string): string | null {
     return text.slice(start).replace(/^\s+/, '')
 }
 
-/**
- * Locates the active ChatGPT editor using several selectors to survive UI changes.
- */
 function getChatEditor(): ChatEditor | null {
     const selectors = [
         '#prompt-textarea[contenteditable="true"]',
@@ -196,18 +111,12 @@ function getChatEditor(): ChatEditor | null {
     return null
 }
 
-/**
- * Reads plain text from either contenteditable div or textarea editor.
- */
 function getEditorPlainText(editor: ChatEditor): string {
     return editor instanceof HTMLTextAreaElement
         ? editor.value.trim()
         : editor.innerText.trim()
 }
 
-/**
- * Updates textarea value through the native setter so React-like frameworks detect changes.
- */
 function setNativeTextareaValue(textarea: HTMLTextAreaElement, value: string): void {
     const prototype = Object.getPrototypeOf(textarea)
     const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value')
@@ -216,9 +125,6 @@ function setNativeTextareaValue(textarea: HTMLTextAreaElement, value: string): v
     textarea.dispatchEvent(new Event('change', { bubbles: true }))
 }
 
-/**
- * Syncs fallback hidden textarea used by some ChatGPT builds.
- */
 function syncFallbackTextarea(value: string): void {
     const textarea = document.querySelector(
         'textarea[name="prompt-textarea"]'
@@ -228,9 +134,6 @@ function syncFallbackTextarea(value: string): void {
     setNativeTextareaValue(textarea, value)
 }
 
-/**
- * Writes text into contenteditable editor preserving line breaks.
- */
 function setDivEditorText(editor: HTMLDivElement, value: string): void {
     editor.focus()
     editor.innerHTML = ''
@@ -261,9 +164,6 @@ function setDivEditorText(editor: HTMLDivElement, value: string): void {
     }
 }
 
-/**
- * Unified writer for both editor modes.
- */
 function setEditorText(editor: ChatEditor, value: string): void {
     if (editor instanceof HTMLTextAreaElement) {
         setNativeTextareaValue(editor, value)
@@ -274,9 +174,6 @@ function setEditorText(editor: ChatEditor, value: string): void {
     syncFallbackTextarea(value)
 }
 
-/**
- * Wraps current editor content once and returns original text for restoration.
- */
 function wrapInputIfNeeded(editor: ChatEditor | null = getChatEditor()): string | null {
     if (!currentSession || !currentSession.active) return null
     if (!editor) return null
@@ -290,9 +187,6 @@ function wrapInputIfNeeded(editor: ChatEditor | null = getChatEditor()): string 
     return rawText
 }
 
-/**
- * Restores visible editor text only if wrapped text is still present.
- */
 function maybeRestoreRawTextInEditor(rawText: string): void {
     const editor = getChatEditor()
     if (!editor) return
@@ -303,9 +197,6 @@ function maybeRestoreRawTextInEditor(rawText: string): void {
     setEditorText(editor, rawText)
 }
 
-/**
- * Multiple delayed restoration attempts to handle async UI updates.
- */
 function scheduleRestoreRawText(rawText: string): void {
     for (const delay of [120, 220, 420, 720]) {
         window.setTimeout(() => {
@@ -314,9 +205,6 @@ function scheduleRestoreRawText(rawText: string): void {
     }
 }
 
-/**
- * Immediate wrap plus short retry to catch race conditions before send.
- */
 function wrapInputWithRetry(editor: ChatEditor | null = getChatEditor()): string | null {
     const rawText = wrapInputIfNeeded(editor)
     window.setTimeout(() => {
@@ -325,63 +213,27 @@ function wrapInputWithRetry(editor: ChatEditor | null = getChatEditor()): string
     return rawText
 }
 
-/**
- * Pulls latest session and refreshes banner.
- */
 async function loadSession(): Promise<void> {
     currentSession = await getEffectiveSession()
-    updateBanner()
 }
 
-/**
- * Keeps countdown accurate while tab remains open.
- */
-function startBannerLoop(): void {
-    void loadSession()
-
-    setInterval(() => {
-        void loadSession()
-    }, 1000)
-}
-
-/**
- * Reacts to session changes and auto-cleans expired state from content side.
- */
 function setupSessionListener(): void {
     chrome.storage.onChanged.addListener((changes, areaName) => {
         if (areaName !== 'local') return
         if (!changes.session) return
-
-        const newSession = changes.session.newValue as SessionData | null
-
-        if (newSession && newSession.active && newSession.endTime && Date.now() >= newSession.endTime) {
-            void endSession()
-            return
-        }
-
-        currentSession = newSession
-        updateBanner()
+        void loadSession()
     })
 }
 
-/**
- * True when keyboard event originated from the chat editor.
- */
 function isEditorTarget(target: EventTarget | null): boolean {
     if (!(target instanceof Element)) return false
     return !!target.closest('#prompt-textarea, textarea[name="prompt-textarea"]')
 }
 
-/**
- * True when submit event came from the ChatGPT compose form.
- */
 function isChatForm(form: HTMLFormElement): boolean {
     return Boolean(form.querySelector('#prompt-textarea, textarea[name="prompt-textarea"]'))
 }
 
-/**
- * Resolves the send button from direct target or composed event path.
- */
 function getSendButtonFromEvent(event: Event): HTMLButtonElement | null {
     const selector =
         'button#composer-submit-button, button[data-testid="send-button"], button[aria-label*="Send"], button[aria-label*="send"]'
@@ -401,12 +253,6 @@ function getSendButtonFromEvent(event: Event): HTMLButtonElement | null {
     return null
 }
 
-/**
- * Button-send path:
- * 1) cancel original click,
- * 2) wrap prompt,
- * 3) replay one synthetic click.
- */
 function handleSendButtonClick(event: MouseEvent): void {
     const sendButton = getSendButtonFromEvent(event)
     if (!sendButton) return
@@ -438,9 +284,6 @@ function handleSendButtonClick(event: MouseEvent): void {
     }, 40)
 }
 
-/**
- * Replaces wrapped text that may briefly appear in visible UI fragments.
- */
 function sanitizeWrappedTextInElement(element: Element): void {
     if (element instanceof HTMLTextAreaElement) return
     if (element.id === 'prompt-textarea') return
@@ -466,9 +309,6 @@ function sanitizeWrappedTextInElement(element: Element): void {
     }
 }
 
-/**
- * Watches DOM mutations and periodically scans chat area for wrapped-text artifacts.
- */
 function setupWrappedTextSanitizer(): void {
     const observer = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
@@ -492,9 +332,6 @@ function setupWrappedTextSanitizer(): void {
     }, 1200)
 }
 
-/**
- * Hooks Enter submit, form submit, and send-button clicks to enforce wrapping.
- */
 function setupSendInterception(): void {
     document.addEventListener(
         'keydown',
@@ -537,14 +374,15 @@ function setupSendInterception(): void {
     )
 }
 
-/**
- * Content-script bootstrap.
- */
 function start(): void {
-    startBannerLoop()
+    void loadSession()
     setupSessionListener()
     setupSendInterception()
     setupWrappedTextSanitizer()
+
+    window.setInterval(() => {
+        void loadSession()
+    }, 1000)
 }
 
 if (document.readyState === 'loading') {
@@ -552,4 +390,4 @@ if (document.readyState === 'loading') {
 } else {
     start()
 }
-
+})()
