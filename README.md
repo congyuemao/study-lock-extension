@@ -20,8 +20,10 @@ It combines website blocking, ChatGPT prompt wrapping, and a strict burn mode to
   会话进行中会锁定 Options 编辑。
 - Popup dashboard: current session, remaining time, allowlist summary.  
   Popup 面板：显示当前会话、剩余时间、白名单概览。
-- ChatGPT top banner showing session topic and countdown.  
-  ChatGPT 顶部提示栏显示会话主题与倒计时。
+- Global top banner on all pages showing session topic and countdown.  
+  全站顶部提示栏显示会话主题与倒计时。
+- ChatGPT page keeps dedicated prompt wrapping + send interception flow.  
+  ChatGPT 页面保留独立的提示词包装与发送拦截流程。
 - Prompt wrapping on send (Enter and send button are both supported).  
   发送时自动包装提示词（支持回车发送和按钮发送）。
 - One-click button send flow (no second click needed).  
@@ -56,8 +58,10 @@ It combines website blocking, ChatGPT prompt wrapping, and a strict burn mode to
   `src/options.*`：白名单管理
 - `src/background.ts`: dynamic rule sync, alarms, burn-mode protection  
   `src/background.ts`：动态规则同步、闹钟、破釜沉舟防护
-- `src/content/chatgpt.ts`: ChatGPT banner + prompt wrapping  
-  `src/content/chatgpt.ts`：ChatGPT 顶栏和提示词包装
+- `src/content/focus-popup.ts`: global focus top banner for all pages  
+  `src/content/focus-popup.ts`：全站专注顶栏提示
+- `src/content/chatgpt.ts`: ChatGPT prompt wrapping + send interception  
+  `src/content/chatgpt.ts`：ChatGPT 提示词包装与发送拦截
 - `src/content/close-guard.ts`: burn-mode page leave guard  
   `src/content/close-guard.ts`：破釜沉舟离开拦截
 - `src/shared/storage.ts`: shared storage/session helpers  
@@ -87,6 +91,23 @@ npm run build
   开启开发者模式
 - Click `Load unpacked` and select this repo's `dist` folder  
   点击“加载已解压的扩展程序”，选择本仓库的 `dist` 目录
+
+## Release Packaging / 发布打包
+
+1. Build / 构建
+
+```bash
+npm run build
+```
+
+2. Pack CRX with existing key / 使用已有密钥打包 CRX
+
+```powershell
+msedge.exe --pack-extension="D:\codexWorkSpace\study-lock-extension\dist" --pack-extension-key="D:\codexWorkSpace\study-lock-extension\dist.pem"
+```
+
+3. Copy artifacts to `release/` with versioned names (`.crx`, `.zip`, optional `.pem`).  
+   将产物复制到 `release/` 并使用版本号命名（`.crx`、`.zip`、可选 `.pem`）。
 
 ## Usage / 使用说明
 
