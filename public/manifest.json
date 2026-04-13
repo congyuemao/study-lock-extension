@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Study Lock",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "Study-only browsing and ChatGPT wrapper.",
     "action": {
         "default_popup": "src/popup.html"
